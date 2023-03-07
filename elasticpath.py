@@ -1,5 +1,6 @@
 import requests
 import json
+from pprint import pprint
 
 TIMESTAMP = None
 
@@ -298,21 +299,8 @@ def load_addresses(access_token, flow_id, filename):
         create_flow_field(access_token, data)
 
 
-def load_addresses_v2(token, slug, filename):
-    addresses = open_json(filename)
-    for address in addresses:
-        data = {
-            "type": "entry",
-            "address": address['address']['full'],
-            "alias": address['alias'],
-            "latitude": address['coordinates']['lat'],
-            'longitude': address['coordinates']['lon']
-        }
-        create_flow_field_v2(token, slug, data)
-        break
+def create_flow_entry(token, slug, data):
 
-
-def create_flow_field_v2(token, slug, data):
     headers = {
         'Authorization': f'Bearer {token}',
         'Content-Type': 'application/json',
@@ -326,3 +314,13 @@ def open_json(file_name):
     with open(file_name, 'r', encoding='utf-8') as file:
         data = file.read()
     return json.loads(data)
+
+
+def get_flow_entries(token, slug, page):
+    headers = {
+        'Authorization': f'Bearer {token}',
+    }
+    response = requests.get(f'https://api.moltin.com/v2/flows/{slug}/entries?page[limit]=100&page[offset]={page*100}', headers=headers)
+    response.raise_for_status()
+    return response.json()
+
