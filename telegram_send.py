@@ -1,26 +1,57 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from elasticpath import get_products
 import textwrap
+from pprint import pprint
 
 
-def send_menu(access_token):
+def send_menu(update, access_token):
+
+    query = update.callback_query
+
+    if hasattr(query, 'data') and '#' in query.data:
+        page = int(query.data.split('#')[1])
+    else:
+        page = 0
+
+    pagination_per_page = 5
     products = get_products(access_token)
+    pages_count = round(len(products['data'])/pagination_per_page)
+    pages = {page: products['data'][page + page*pagination_per_page:pagination_per_page + page + page*pagination_per_page] for page in range(pages_count)}
+
+    keyboard = []
+    for product in pages[page]:
+        keyboard.append([InlineKeyboardButton(product['attributes']['name'], callback_data=product['id'])])
+
+    if page == 0:
+        keyboard.append(
+            [
+                InlineKeyboardButton('Корзина', callback_data='basket'),
+                InlineKeyboardButton('->', callback_data=f'next#{page + 1}')
+            ]
+        )
+    elif page + 1 == pages_count:
+        keyboard.append(
+            [
+                InlineKeyboardButton('<-', callback_data=f'back#{page - 1}'),
+                InlineKeyboardButton('Корзина', callback_data='basket')
+            ]
+        )
+    else:
+        keyboard.append(
+            [
+                InlineKeyboardButton('<-', callback_data=f'back#{page - 1}'),
+                InlineKeyboardButton('Корзина', callback_data='basket'),
+                InlineKeyboardButton('->', callback_data=f'next#{page + 1}')
+            ]
+        )
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
 
     message = textwrap.dedent(
         """
-        Внимание, внимание\!
-        Открывается веселое гуляние\!
-        Торопись, честной народ,
-        Тебя ярмарка зовет\!
+        Пицца \- это круговая диаграмма, показывающая сколько у тебя осталось пиццы\.
         """
     )
-
-    keyboard = []
-    for product in products['data']:
-        keyboard.append([InlineKeyboardButton(product['attributes']['name'], callback_data=product['id'])])
-    keyboard.append([InlineKeyboardButton('Корзина', callback_data='basket')])
-
-    reply_markup = InlineKeyboardMarkup(keyboard)
 
     return message, reply_markup
 

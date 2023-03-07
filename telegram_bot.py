@@ -37,19 +37,19 @@ def start(update, context, access_token, client_id, client_secret):
 
     access_token = check_timestamp(client_id, client_secret, access_token)
 
-    message, reply_markup = send_menu(access_token)
-    update.message.reply_markdown_v2(text=message, reply_markup=reply_markup)
+    message, reply_markup = send_menu(update, access_token)
+    context.bot.send_message(text=message, chat_id=update.message.chat_id, reply_markup=reply_markup)
+    context.bot.delete_message(chat_id=update.message.chat_id, message_id=update.message.message_id)
 
     return States.HANDLE_MENU
 
 
 def get_product_detail(update, context, access_token, client_id, client_secret):
     query = update.callback_query
-    data = query.data.split(':::')
 
     access_token = check_timestamp(client_id, client_secret, access_token)
 
-    if 'basket' in data:
+    if 'basket' in query.data:
         cart_items = get_cart_items(access_token, query.message.chat_id)
         message, reply_markup = send_basket(cart_items)
 
@@ -60,7 +60,13 @@ def get_product_detail(update, context, access_token, client_id, client_secret):
                               )
         return States.HANDLE_BASKET
 
-    product_id = data[0]
+    if '#' in query.data:
+        message, reply_markup = send_menu(update, access_token)
+        context.bot.send_message(text=message, chat_id=query.message.chat_id, reply_markup=reply_markup)
+        context.bot.delete_message(chat_id=query.message.chat_id, message_id=query.message.message_id)
+        return States.HANDLE_MENU
+
+    product_id = query.data
 
     product = get_product(access_token, product_id)
 
@@ -108,7 +114,7 @@ def go_back(update, context, access_token, client_id, client_secret):
         add_products_to_cart(access_token, query.message.chat_id, product_id)
         return States.HANDLE_MENU
 
-    message, reply_markup = send_menu(access_token)
+    message, reply_markup = send_menu(update, access_token)
 
     context.bot.send_message(text=message, chat_id=query.message.chat_id, reply_markup=reply_markup)
     context.bot.delete_message(chat_id=query.message.chat_id, message_id=query.message.message_id)
@@ -124,7 +130,7 @@ def get_basket(update, context, access_token, client_id, client_secret):
     access_token = check_timestamp(client_id, client_secret, access_token)
 
     if data == 'back_to_menu':
-        message, reply_markup = send_menu(access_token)
+        message, reply_markup = send_menu(update, access_token)
         context.bot.edit_message_text(text=message,
                               chat_id=query.message.chat_id,
                               message_id=query.message.message_id,
@@ -164,7 +170,7 @@ def wait_for_email(update, context, access_token, client_id, client_secret):
     create_customer(access_token, chat_id, email)
     update.message.reply_text(text=f'Спасибо за почту "{email}" (˵ ͡° ͜ʖ ͡°˵)')
 
-    message, reply_markup = send_menu(access_token)
+    message, reply_markup = send_menu(update, access_token)
     update.message.reply_text(text=message, reply_markup=reply_markup)
 
     return States.HANDLE_MENU
@@ -194,7 +200,6 @@ def main() -> None:
         entry_points=[CommandHandler("start", start_credentials)],
         states={
             States.HANDLE_MENU: [
-                CallbackQueryHandler(get_basket_credentials, pattern='Корзина'),
                 CallbackQueryHandler(get_product_detail_credentials),
             ],
             States.HANDLE_DESCRIPTION: [
