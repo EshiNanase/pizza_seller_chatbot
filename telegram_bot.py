@@ -6,18 +6,20 @@ import dotenv
 import logging
 
 from enum import Enum, auto
+
+import telegram
 from telegram.ext import CallbackQueryHandler
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from functools import partial
-from elasticpath import get_access_token, get_product, get_file, add_products_to_cart, get_cart_items, delete_cart_item, create_customer, get_flow_entries
-from telegram_send import send_basket, send_menu
+from elasticpath import get_access_token, get_product, get_file, add_products_to_cart, get_cart_items, delete_cart_item, create_customer, get_flow_entries, create_flow_entry
+from telegram_send import send_basket, send_menu, send_invoice
+import telegram_send
 from logger import ChatbotLogsHandler
 import elasticpath
 from telegram.ext import (CommandHandler, ConversationHandler, Filters,
                           MessageHandler, Updater)
 from geocoder import fetch_coordinates, compare_distance
 
-from pprint import pprint
 
 logger = logging.getLogger(__file__)
 
@@ -43,8 +45,7 @@ def start(update, context, access_token, client_id, client_secret):
     access_token = check_timestamp(client_id, client_secret, access_token)
 
     message, reply_markup = send_menu(update, access_token)
-    context.bot.send_message(text=message, chat_id=update.message.chat_id, reply_markup=reply_markup)
-    context.bot.delete_message(chat_id=update.message.chat_id, message_id=update.message.message_id)
+    context.bot.send_photo(caption=message, photo=telegram_send.LOGO, chat_id=update.message.chat_id, reply_markup=reply_markup)
 
     return States.HANDLE_MENU
 
@@ -58,17 +59,14 @@ def get_product_detail(update, context, access_token, client_id, client_secret):
         cart_items = get_cart_items(access_token, query.message.chat_id)
         message, reply_markup = send_basket(cart_items)
 
-        context.bot.edit_message_text(text=message,
-                              chat_id=query.message.chat_id,
-                              message_id=query.message.message_id,
-                              reply_markup=reply_markup
-                              )
+        context.bot.delete_message(chat_id=query.message.chat_id, message_id=query.message.message_id)
+        context.bot.send_message(text=message, chat_id=query.message.chat_id, reply_markup=reply_markup)
         return States.HANDLE_BASKET
 
     if '#' in query.data:
         message, reply_markup = send_menu(update, access_token)
-        context.bot.send_message(text=message, chat_id=query.message.chat_id, reply_markup=reply_markup)
         context.bot.delete_message(chat_id=query.message.chat_id, message_id=query.message.message_id)
+        context.bot.send_photo(caption=message, photo=telegram_send.LOGO, chat_id=query.message.chat_id, reply_markup=reply_markup)
         return States.HANDLE_MENU
 
     product_id = query.data
@@ -121,8 +119,8 @@ def go_back(update, context, access_token, client_id, client_secret):
 
     message, reply_markup = send_menu(update, access_token)
 
-    context.bot.send_message(text=message, chat_id=query.message.chat_id, reply_markup=reply_markup)
     context.bot.delete_message(chat_id=query.message.chat_id, message_id=query.message.message_id)
+    context.bot.send_photo(caption=message, photo=telegram_send.LOGO, chat_id=query.message.chat_id, reply_markup=reply_markup)
 
     return States.HANDLE_MENU
 
@@ -136,11 +134,8 @@ def get_basket(update, context, access_token, client_id, client_secret):
 
     if data == 'back_to_menu':
         message, reply_markup = send_menu(update, access_token)
-        context.bot.edit_message_text(text=message,
-                              chat_id=query.message.chat_id,
-                              message_id=query.message.message_id,
-                              reply_markup=reply_markup
-                              )
+        context.bot.delete_message(chat_id=query.message.chat_id, message_id=query.message.message_id)
+        context.bot.send_photo(caption=message, photo=telegram_send.LOGO, chat_id=query.message.chat_id, reply_markup=reply_markup)
         return States.HANDLE_MENU
 
     if data == 'payment':
@@ -184,24 +179,23 @@ def handle_address(update, context, access_token, client_id, client_secret, yand
     page = 0
     entries = get_flow_entries(access_token, 'pizza-seller', page)
     all_pizzerias = []
-    for entry in entries['data']:
-        all_pizzerias.append(
-            {
-                'distance': compare_distance(coordinates, (entry['latitude'], entry['longitude'])),
-                'address': entry['address']
-            }
-        )
     while page != entries['meta']['page']['total']:
-        page += 1
-        entries = get_flow_entries(access_token, 'pizza-seller', page)
         for entry in entries['data']:
             all_pizzerias.append(
                 {
                     'distance': compare_distance(coordinates, (entry['latitude'], entry['longitude'])),
-                    'address': entry['address']
+                    'address': entry['address'],
+                    'coordinates': {
+                        'latitude': entry['latitude'],
+                        'longitude': entry['longitude']
+                    },
+                    'delivery_guy': entry['delivery_guy']
                 }
             )
+        page += 1
+        entries = get_flow_entries(access_token, 'pizza-seller', page)
     nearest_one = min(all_pizzerias, key=lambda pizzeria: pizzeria['distance'])
+
     keyboard = [
         [InlineKeyboardButton('Доставка', callback_data='delivery')],
         [InlineKeyboardButton('Самовывоз', callback_data='pickup')],
@@ -215,25 +209,110 @@ def handle_address(update, context, access_token, client_id, client_secret, yand
         message = f'Ой, что-то ты далеко от ближайшей пиццерии, придется оплатить доставку в размере 300 рублей (≧︿≦)'
     else:
         keyboard = [
-            [InlineKeyboardButton('Хорошо', callback_data='delivery')],
+            [InlineKeyboardButton('Хорошо', callback_data='pickup')],
             [InlineKeyboardButton('Отправить новый адрес', callback_data='resend_address')]
         ]
-        message = f'Дичайше извиняемся, но так далеко мы доставить не можем. Как насчеть самовывоза? (ಠ_ಠ)'
+        message = f'Дичайше извиняемся, но так далеко мы доставить не можем. Как насчет самовывоза? (ಠ_ಠ)'
 
     reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text(text=message, reply_markup=reply_markup)
+
+    context.user_data['address'] = nearest_one["address"]
+    context.user_data['coordinates'] = nearest_one["coordinates"]
+    context.user_data['delivery_guy'] = nearest_one["delivery_guy"]
+    context.bot.send_message(text=message, chat_id=update.message.chat_id, reply_markup=reply_markup)
 
     return States.HANDLE_DELIVERY
 
 
-def handle_delivery(update, context, access_token, client_id, client_secret, yandex_api_key):
+def handle_delivery(update, context, access_token, client_id, client_secret, provider_token):
     query = update.callback_query
+
+    access_token = check_timestamp(client_id, client_secret, access_token)
 
     if 'resend_address' in query.data:
         message = 'Не проблема, отправляй новую геолокацию или адрес (o･ω･o)'
-        update.message.reply_text(text=message)
+        context.bot.edit_message_text(text=message,
+                                      chat_id=query.message.chat_id,
+                                      message_id=query.message.message_id
+                                      )
 
         return States.HANDLE_ADDRESS
+
+    elif 'pickup' in query.data:
+        address = context.user_data['address']
+        message = textwrap.dedent(
+            f"""
+            Прекрасно, ждем тебя по адресу <b>{address}</b> (づ｡◕‿‿◕｡)づ
+            
+            Если все понравилось, то приходи еще по команде /start c:
+            """
+        )
+        context.bot.edit_message_text(text=message,
+                                      chat_id=query.message.chat_id,
+                                      message_id=query.message.message_id,
+                                      parse_mode=telegram.ParseMode.HTML
+                                      )
+
+    elif 'delivery' in query.data:
+        cart_items = get_cart_items(access_token, query.message.chat_id)
+
+        price = cart_items['meta']['display_price']['with_tax']['amount']
+        payload = {
+            'coordinates': context.user_data['coordinates'],
+            'delivery_guy': context.user_data['delivery_guy'],
+            'chat_id': query.message.chat_id
+        }
+        print(price)
+        send_invoice(update, context, payload, price, provider_token)
+        message = 'С нетерпением ждем оплаты! Если не сложилось, то напиши /start'
+
+        context.bot.edit_message_text(text=message,
+                                      chat_id=query.message.chat_id,
+                                      message_id=query.message.message_id,
+                                      parse_mode=telegram.ParseMode.HTML
+                                      )
+
+
+def notice_after_hour(context):
+    message = textwrap.dedent(
+        """
+        Приятного аппетита! ※\(^o^)/※
+        
+        Если аппетит неприятный (пицца не доехала), то скорее пиши на почту alksndr.zln@gmail.com, и мы вернем стоимость!
+        Просим прощения :(
+        """
+    )
+    context.bot.send_message(text=message, chat_id=context.job.context)
+
+
+def successful_payment(update, context, access_token, client_id, client_secret, job_queue):
+
+    query = update.pre_checkout_query
+
+    access_token = check_timestamp(client_id, client_secret, access_token)
+
+    message = 'Прекрасно, курьер скоро будет! Если через час пицца не будет доставлена, то она за наш счет [̲̅$̲̅(̲̅ ͡° ͜ʖ ͡°̲̅)̲̅$̲̅]'
+    context.bot.send_messaget(text=message,
+                              chat_id=query['chat_id'],
+                              parse_mode=telegram.ParseMode.HTML
+                              )
+
+    message, reply_markup = send_menu(update, access_token)
+    context.bot.send_photo(caption=message, photo=telegram_send.LOGO, chat_id=query['chat_id'],
+                           reply_markup=reply_markup)
+
+    coordinates = query['coordinates']
+    delivery_guy = query['delivery_guy']
+
+    cart_items = query['cart_items']
+    create_flow_entry(access_token, 'pizzeria-customer-addresses', coordinates)
+
+    delivery_guy_message, reply_markup = send_basket(cart_items)
+    context.bot.send_message(text=delivery_guy_message, chat_id=delivery_guy)
+    context.bot.send_location(latitude=coordinates['latitude'], longitude=coordinates['longitude'],
+                              chat_id=delivery_guy)
+
+    job_queue.run_once(notice_after_hour, 60, context=query.message.chat_id)
 
 
 def main() -> None:
@@ -247,17 +326,24 @@ def main() -> None:
 
     yandex_api_token = os.environ['YANDEX_API_TOKEN']
 
+    provider_token = os.environ['PROVIDER_TOKEN']
+
     moltin_client_id = os.environ['MOLTIN_CLIENT_ID']
     moltin_secret_key = os.environ['MOLTIN_SECRET_KEY']
     moltin_access_token, timestamp = get_access_token(moltin_client_id, moltin_secret_key)
     elasticpath.TIMESTAMP = timestamp
+
+    updater = Updater(telegram_token)
+    dispatcher = updater.dispatcher
+    job_queue = updater.job_queue
 
     start_credentials = partial(start, access_token=moltin_access_token, client_id=moltin_client_id, client_secret=moltin_secret_key)
     get_product_detail_credentials = partial(get_product_detail, access_token=moltin_access_token, client_id=moltin_client_id, client_secret=moltin_secret_key)
     go_back_credentials = partial(go_back, access_token=moltin_access_token, client_id=moltin_client_id, client_secret=moltin_secret_key)
     get_basket_credentials = partial(get_basket, access_token=moltin_access_token, client_id=moltin_client_id, client_secret=moltin_secret_key)
     handle_address_credentials = partial(handle_address, access_token=moltin_access_token, client_id=moltin_client_id, client_secret=moltin_secret_key, yandex_api_key=yandex_api_token)
-    handle_delivery_credentials = partial(handle_delivery, access_token=moltin_access_token, client_id=moltin_client_id, client_secret=moltin_secret_key)
+    handle_delivery_credentials = partial(handle_delivery, access_token=moltin_access_token, client_id=moltin_client_id, client_secret=moltin_secret_key, provider_token=provider_token)
+    successful_payment_credentials = partial(successful_payment, access_token=moltin_access_token, client_id=moltin_client_id, client_secret=moltin_secret_key, job_queue=job_queue)
 
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start_credentials)],
@@ -284,10 +370,8 @@ def main() -> None:
         name='bot_conversation',
     )
 
-    updater = Updater(telegram_token)
-    dispatcher = updater.dispatcher
-
     dispatcher.add_handler(conv_handler)
+    dispatcher.add_handler(MessageHandler(Filters.successful_payment, successful_payment_credentials))
 
     updater.start_polling()
     updater.idle()

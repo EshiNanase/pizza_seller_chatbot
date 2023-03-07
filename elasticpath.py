@@ -1,6 +1,5 @@
 import requests
 import json
-from pprint import pprint
 
 TIMESTAMP = None
 
@@ -299,12 +298,16 @@ def load_addresses(access_token, flow_id, filename):
         create_flow_field(access_token, data)
 
 
-def create_flow_entry(token, slug, data):
+def create_flow_entry(token, slug, coordinates):
 
     headers = {
         'Authorization': f'Bearer {token}',
         'Content-Type': 'application/json',
     }
+    data = {
+        'type': 'entry'
+    }
+    data.update(coordinates)
     response = requests.post(f'https://api.moltin.com/v2/flows/{slug}/entries', headers=headers, json={'data': data})
     response.raise_for_status()
     return response.json()
@@ -321,6 +324,14 @@ def get_flow_entries(token, slug, page):
         'Authorization': f'Bearer {token}',
     }
     response = requests.get(f'https://api.moltin.com/v2/flows/{slug}/entries?page[limit]=100&page[offset]={page*100}', headers=headers)
-    response.raise_for_status()
     return response.json()
 
+
+def update_flow_entry(token, slug, entry_id, data):
+    headers = {
+        'Authorization': f'Bearer {token}',
+        'Content-Type': 'application/json',
+    }
+    response = requests.put(f'https://api.moltin.com/v2/flows/{slug}/entries/{entry_id}', headers=headers, json={'data': data})
+    response.raise_for_status()
+    return response.json()

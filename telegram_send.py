@@ -1,7 +1,12 @@
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
 from elasticpath import get_products
 import textwrap
-from pprint import pprint
+import dotenv
+import os
+
+dotenv.load_dotenv()
+
+LOGO = os.environ['LOGO_LINK']
 
 
 def send_menu(update, access_token):
@@ -49,7 +54,13 @@ def send_menu(update, access_token):
 
     message = textwrap.dedent(
         """
-        Пицца \- это круговая диаграмма, показывающая сколько у тебя осталось пиццы\.
+        Добро пожаловать в онлайн-пиццерию "Пузана" 
+        ヽ༼ ຈل͜ຈ༼ ▀̿̿Ĺ̯̿̿▀̿ ̿༽Ɵ͆ل͜Ɵ͆ ༽ﾉ
+        
+        Мы продаем только качественную пицу и только за доллары, потому что мы - люди серьезные.
+        
+        Анекдот:
+        Пицца - это круговая диаграмма, показывающая сколько у тебя осталось пиццы.
         """
     )
 
@@ -79,6 +90,9 @@ def send_basket(cart_items):
         total += price * quantity
         keyboard.append([InlineKeyboardButton(f'Убрать из корзины {name}', callback_data=f'{product["id"]}')])
 
+    if not cart_items['data']:
+        keyboard.pop(0)
+
     if not message:
         message = 'Дружище, корзина пуста (ㆆ _ ㆆ)'
     else:
@@ -88,3 +102,23 @@ def send_basket(cart_items):
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     return message, reply_markup
+
+
+def send_invoice(update, context, payload, price, provider_token):
+    query = update.callback_query
+    chat_id = query.message.chat_id
+    title = chat_id
+    description = f'Pizza for {chat_id}'
+    payload = payload
+    currency = "USD"
+    prices = [LabeledPrice("USD", price)]
+
+    context.bot.send_invoice(
+        chat_id=chat_id,
+        title=title,
+        description=description,
+        payload=payload,
+        provider_token=provider_token,
+        currency=currency,
+        prices=prices
+    )
