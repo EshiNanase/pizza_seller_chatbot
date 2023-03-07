@@ -262,7 +262,7 @@ def handle_delivery(update, context, access_token, client_id, client_secret, pro
             'delivery_guy': context.user_data['delivery_guy'],
             'chat_id': query.message.chat_id
         }
-        print(price)
+
         send_invoice(update, context, payload, price, provider_token)
         message = 'С нетерпением ждем оплаты! Если не сложилось, то напиши /start'
 
