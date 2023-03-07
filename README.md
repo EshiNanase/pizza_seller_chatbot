@@ -36,6 +36,7 @@ Products на elasticpath.com/products page: выставьте у них цен
 Hierarchy на .elasticpath.com/configurations: просто создайте один Node и добавьте в него все созданные товары
 Price Book на elasticpath.com/pricebooks: добавьте в него все созданные товары и выставьте им цены
 Catalog на elasticpath.com/catalogs: добавьте созданные Hierarchy, Price Book и опубликуйте каталог
+```
 ## Переменные окружения
 
 Необходимо создать файл .env и указать в нем следующие переменные:
