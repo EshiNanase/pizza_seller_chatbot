@@ -8,7 +8,7 @@ import logging
 from enum import Enum, auto
 
 import telegram
-from telegram.ext import CallbackQueryHandler
+from telegram.ext import CallbackQueryHandler, PreCheckoutQueryHandler
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from functools import partial
 from elasticpath import get_access_token, get_product, get_file, add_products_to_cart, get_cart_items, delete_cart_item, create_customer, get_flow_entries, create_flow_entry
@@ -19,6 +19,7 @@ import elasticpath
 from telegram.ext import (CommandHandler, ConversationHandler, Filters,
                           MessageHandler, Updater)
 from geocoder import fetch_coordinates, compare_distance
+import json
 
 
 logger = logging.getLogger(__file__)
@@ -31,6 +32,7 @@ class States(Enum):
     HANDLE_ADDRESS = auto()
     HANDLE_PAYMENT = auto()
     HANDLE_DELIVERY = auto()
+    WAIT_FOR_PAYMENT = auto()
 
 
 def check_timestamp(client_id, client_secret, access_token):
@@ -260,7 +262,7 @@ def handle_delivery(update, context, access_token, client_id, client_secret, pro
         payload = {
             'coordinates': context.user_data['coordinates'],
             'delivery_guy': context.user_data['delivery_guy'],
-            'chat_id': query.message.chat_id
+            'chat_id': query.message.chat_id,
         }
 
         send_invoice(update, context, payload, price, provider_token)
@@ -271,6 +273,8 @@ def handle_delivery(update, context, access_token, client_id, client_secret, pro
                                       message_id=query.message.message_id,
                                       parse_mode=telegram.ParseMode.HTML
                                       )
+
+        return States.WAIT_FOR_PAYMENT
 
 
 def notice_after_hour(context):
@@ -287,32 +291,44 @@ def notice_after_hour(context):
 
 def successful_payment(update, context, access_token, client_id, client_secret, job_queue):
 
-    query = update.pre_checkout_query
+    invoice_data = context.user_data
+    coordinates = invoice_data['coordinates']
+    delivery_guy = invoice_data['delivery_guy']
+    chat_id = update.message.chat_id
 
     access_token = check_timestamp(client_id, client_secret, access_token)
 
-    message = 'Прекрасно, курьер скоро будет! Если через час пицца не будет доставлена, то она за наш счет [̲̅$̲̅(̲̅ ͡° ͜ʖ ͡°̲̅)̲̅$̲̅]'
-    context.bot.send_messaget(text=message,
-                              chat_id=query['chat_id'],
-                              parse_mode=telegram.ParseMode.HTML
-                              )
+    message = textwrap.dedent(
+        """
+        Прекрасно, курьер скоро будет! Если через час пицца не будет доставлена, то она за наш счет [̲̅$̲̅(̲̅ ͡° ͜ʖ ͡°̲̅)̲̅$̲̅]
+        
+        Ждем тебя снова по команде /start :З
+        """
+    )
+    context.bot.send_message(text=message,
+                             chat_id=chat_id,
+                             parse_mode=telegram.ParseMode.HTML
+                             )
 
-    message, reply_markup = send_menu(update, access_token)
-    context.bot.send_photo(caption=message, photo=telegram_send.LOGO, chat_id=query['chat_id'],
-                           reply_markup=reply_markup)
-
-    coordinates = query['coordinates']
-    delivery_guy = query['delivery_guy']
-
-    cart_items = query['cart_items']
     create_flow_entry(access_token, 'pizzeria-customer-addresses', coordinates)
+    cart_items = get_cart_items(access_token, chat_id)
 
     delivery_guy_message, reply_markup = send_basket(cart_items)
     context.bot.send_message(text=delivery_guy_message, chat_id=delivery_guy)
     context.bot.send_location(latitude=coordinates['latitude'], longitude=coordinates['longitude'],
                               chat_id=delivery_guy)
 
-    job_queue.run_once(notice_after_hour, 60, context=query.message.chat_id)
+    job_queue.run_once(notice_after_hour, 3600, context=chat_id)
+
+
+def precheckout_callback(update, context) -> None:
+
+    query = update.pre_checkout_query
+    invoice_data = json.loads(query.invoice_payload)
+    if 'delivery_guy' in invoice_data and 'chat_id' in invoice_data and 'coordinates' in invoice_data:
+        query.answer(ok=True)
+    else:
+        query.answer(ok=False, error_message="Something went wrong...")
 
 
 def main() -> None:
@@ -364,14 +380,17 @@ def main() -> None:
             States.HANDLE_DELIVERY: [
                 CallbackQueryHandler(handle_delivery_credentials),
             ],
+            States.WAIT_FOR_PAYMENT: [
+                MessageHandler(Filters.successful_payment, successful_payment_credentials),
+            ],
         },
         fallbacks=[],
-        allow_reentry=True,
         name='bot_conversation',
     )
 
     dispatcher.add_handler(conv_handler)
-    dispatcher.add_handler(MessageHandler(Filters.successful_payment, successful_payment_credentials))
+    dispatcher.add_handler(CommandHandler("start", start_credentials))
+    dispatcher.add_handler(PreCheckoutQueryHandler(precheckout_callback),)
 
     updater.start_polling()
     updater.idle()

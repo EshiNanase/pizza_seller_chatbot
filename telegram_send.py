@@ -57,7 +57,7 @@ def send_menu(update, access_token):
         Добро пожаловать в онлайн-пиццерию "Пузана" 
         ヽ༼ ຈل͜ຈ༼ ▀̿̿Ĺ̯̿̿▀̿ ̿༽Ɵ͆ل͜Ɵ͆ ༽ﾉ
         
-        Мы продаем только качественную пицу и только за доллары, потому что мы - люди серьезные.
+        Мы продаем только качественную пиццу и только за доллары, потому что мы - люди серьезные.
         
         Анекдот:
         Пицца - это круговая диаграмма, показывающая сколько у тебя осталось пиццы.
@@ -109,10 +109,8 @@ def send_invoice(update, context, payload, price, provider_token):
     chat_id = query.message.chat_id
     title = chat_id
     description = f'Pizza for {chat_id}'
-    payload = payload
     currency = "USD"
-    prices = [LabeledPrice("USD", price)]
-
+    prices = [LabeledPrice("Test", price)]
     context.bot.send_invoice(
         chat_id=chat_id,
         title=title,
@@ -120,5 +118,5 @@ def send_invoice(update, context, payload, price, provider_token):
         payload=payload,
         provider_token=provider_token,
         currency=currency,
-        prices=prices
+        prices=prices,
     )
