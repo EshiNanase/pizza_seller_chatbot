@@ -11,7 +11,7 @@ import telegram
 from telegram.ext import CallbackQueryHandler, PreCheckoutQueryHandler
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from functools import partial
-from elasticpath import get_access_token, get_product, get_file, add_products_to_cart, get_cart_items, delete_cart_item, create_customer, get_flow_entries, create_flow_entry
+from elasticpath import get_access_token, get_product, get_file, add_products_to_cart, get_cart_items, delete_cart_item, get_flow_entries, create_flow_entry
 from telegram_send import send_basket, send_menu, send_invoice
 import telegram_send
 from logger import ChatbotLogsHandler

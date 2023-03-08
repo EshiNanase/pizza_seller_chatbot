@@ -224,7 +224,7 @@ def create_flow(token, data):
     return response.json()
 
 
-def load_data(access_token, file_name):
+def load_data(access_token, file_name, price_book_id):
     products = open_json(file_name)
     for product in products:
 
@@ -270,7 +270,7 @@ def load_data(access_token, file_name):
                 }
             }
         }
-        price_created = create_product_price(access_token, '4228904d-b1cc-4517-a805-f8835a69fea5', price_data)
+        create_product_price(access_token, price_book_id, price_data)
 
 
 def load_addresses(access_token, flow_id, filename):
@@ -323,7 +323,12 @@ def get_flow_entries(token, slug, page):
     headers = {
         'Authorization': f'Bearer {token}',
     }
-    response = requests.get(f'https://api.moltin.com/v2/flows/{slug}/entries?page[limit]=100&page[offset]={page*100}', headers=headers)
+    params = {
+        'page[limit]': 100,
+        'page[offset]': page*100
+    }
+    response = requests.get(f'https://api.moltin.com/v2/flows/{slug}/entries', headers=headers, params=params)
+    response.raise_for_status()
     return response.json()
 
 
