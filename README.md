@@ -31,8 +31,8 @@ https://euwest.cm.elasticpath.com/
 В-четвертых, в магазине должно быть:
 ```
 Flow со slug'ом "pizza-seller": адреса магазинов с полями address, alias, longitude, latitude (необходимо заполнить)
-Flow со slug'ом "pizza-customer-addresse": адреса клиентов с полями longitude, latitude (оставьте пустым)
-Products на elasticpath.com/products page: выставьте у них цену и поставьте статус live
+Flow со slug'ом "pizza-customer-addresses": адреса клиентов с полями longitude, latitude (оставьте пустым)
+Products на elasticpath.com/products: выставьте у них цену и поставьте статус live
 Hierarchy на .elasticpath.com/configurations: просто создайте один Node и добавьте в него все созданные товары
 Price Book на elasticpath.com/pricebooks: добавьте в него все созданные товары и выставьте им цены
 Catalog на elasticpath.com/catalogs: добавьте созданные Hierarchy, Price Book и опубликуйте каталог
